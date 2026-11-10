@@ -3,10 +3,10 @@ __pycache__/
 .venv/
 venv/
 *.egg-info/
-data/
-runs/
-outputs/
-results/
+/data/
+/runs/
+/outputs/
+/results/
 *.pt
 *.ckpt
 .ipynb_checkpoints/
@@ -14,4 +14,4 @@ results/
 
 # The paper PDF is a co-authored manuscript: keep it out of the public repo
 # unless all authors (and the publisher) agree.
-paper/
+/paper/
