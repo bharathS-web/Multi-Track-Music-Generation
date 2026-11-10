@@ -1,0 +1,8 @@
+torch>=2.1
+numpy
+pretty_midi
+pyyaml
+tqdm
+pytest
+# Optional (Linux + CUDA only, much faster Mamba):
+# mamba-ssm

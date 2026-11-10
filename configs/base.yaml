@@ -1,0 +1,29 @@
+data:
+  dir: data/processed
+  num_workers: 0          # keep 0 on Windows unless you know you need more
+model:
+  mode: hybrid            # hybrid | hybrid_no_gate | mamba_independent | mamba_only | transformer_only
+  d_model: 256
+  n_layers: 6
+  n_heads: 4
+  d_state: 16
+  d_conv: 4
+  expand: 2
+  ffn_mult: 4
+  dropout: 0.1
+  grad_checkpoint: true   # saves memory (important for the pure-PyTorch Mamba)
+  use_official_mamba: false
+  tie_embeddings: true
+  interaction_graph: true  # paper Eq. 11 (false = simpler track-pair bias)
+train:
+  epochs: 30
+  batch_size: 16
+  lr: 3.0e-4
+  weight_decay: 0.01
+  warmup_steps: 500
+  grad_clip: 1.0
+  amp: true
+  seed: 42
+  save_every: 500          # steps between last.pt checkpoints (resume with --resume)
+  log_every: 50
+  run_dir: runs

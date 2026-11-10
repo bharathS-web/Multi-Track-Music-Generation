@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mtmg"
+version = "0.2.0"
+description = "Hybrid multi-track music generation (Mamba + cross-track attention), reimplemented from the paper"
+requires-python = ">=3.9"
+dependencies = ["torch>=2.1", "numpy", "pretty_midi", "pyyaml", "tqdm"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

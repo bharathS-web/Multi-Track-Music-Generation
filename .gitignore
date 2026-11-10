@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+data/
+runs/
+outputs/
+results/
+*.pt
+*.ckpt
+.ipynb_checkpoints/
+.pytest_cache/
+
+# The paper PDF is a co-authored manuscript: keep it out of the public repo
+# unless all authors (and the publisher) agree.
+paper/
