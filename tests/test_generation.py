@@ -9,11 +9,11 @@ from mtmg.models.hybrid import MODES, ModelConfig, _Cache
 T, V = 10, 40
 
 
-def make(mode, graph=False, seed=0, jitter=True):
+def make(mode, graph=False, seed=0, jitter=True, d_cross=0):
     torch.manual_seed(seed)
     m = build_model(ModelConfig(vocab_size=V, d_model=32, n_layers=2, n_heads=2, d_state=4, expand=2,
                                 ffn_mult=2, dropout=0.0, max_len=T, mode=mode, grad_checkpoint=False,
-                                interaction_graph=graph)).eval()
+                                interaction_graph=graph, d_cross=d_cross)).eval()
     if jitter:   # gate / graph start at exact zeros; move them so the tests exercise real values
         with torch.no_grad():
             for p in m.parameters():
@@ -21,10 +21,11 @@ def make(mode, graph=False, seed=0, jitter=True):
     return m
 
 
+@pytest.mark.parametrize("d_cross", [0, 16])
 @pytest.mark.parametrize("graph", [False, True])
 @pytest.mark.parametrize("mode", ["hybrid", "hybrid_no_gate", "mamba_independent"])
-def test_cached_columns_match_full_forward(mode, graph):
-    m = make(mode, graph)
+def test_cached_columns_match_full_forward(mode, graph, d_cross):
+    m = make(mode, graph, d_cross=d_cross)
     x = torch.randint(4, V, (2, NUM_TRACKS, T))
     with torch.no_grad():
         full = m.teacher_forced_logits(x)
@@ -113,3 +114,9 @@ def test_no_gate_ablation_has_no_gate_and_fixed_mix():
     assert not any("gate" in n and "fusion" not in n for n, _ in m.named_parameters())
     z = torch.randn(2, NUM_TRACKS, T, 32)
     assert torch.all(m.layers[0].gate_value(z) == 0.5)
+
+
+def test_d_cross_shrinks_the_cross_track_attention():
+    full, small = make("hybrid", graph=True), make("hybrid", graph=True, d_cross=16)
+    assert small.layers[0].xattn.qkv.out_features == 3 * 16
+    assert small.num_parameters() < full.num_parameters()

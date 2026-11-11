@@ -15,6 +15,7 @@ model:
   use_official_mamba: false
   tie_embeddings: true
   interaction_graph: true  # paper Eq. 11 (false = simpler track-pair bias)
+  d_cross: 64              # cross-track attention width (paper Eq. 25); 0 = d_model
 train:
   epochs: 30
   batch_size: 16

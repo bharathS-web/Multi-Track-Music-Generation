@@ -63,7 +63,9 @@ def test_end_to_end(dataset, tmp_path):
 
     compare.main(["--results", str(results), "--out", str(results / "summary.md")])
     table = (results / "summary.md").read_text()
-    assert "| hybrid |" in table and "| transformer_only |" in table and "real test data" in table
+    assert "| hybrid |" in table and "| transformer_only |" in table and "| Ground truth |" in table
+    for key in ("chord_matching", "nctn", "qr", "sequence_similarity_bass"):
+        assert key in res["generated_metrics"]
 
 
 def test_resume_continues_exactly(dataset, tmp_path, monkeypatch):

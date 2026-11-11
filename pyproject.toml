@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mtmg"
 version = "0.2.0"
-description = "Hybrid multi-track music generation (Mamba + cross-track attention), reimplemented from the paper"
+description = "Hybrid multi-track music generation with per-track Mamba and cross-track attention"
 requires-python = ">=3.9"
 dependencies = ["torch>=2.1", "numpy", "pretty_midi", "pyyaml", "tqdm"]
 

@@ -6,7 +6,9 @@
 Reports:
   * test loss / perplexity / token accuracy (teacher forcing)
   * teacher-forced chord match (argmax prediction vs. ground truth, per bar)
-  * arrangement metrics for (a) real test windows and (b) generated continuations of prompts
+  * the paper's Table I-III metrics (metrics.py) for (a) real test windows ("ground truth") and
+    (b) generated continuations of prompts; chord matching and sequence similarity compare each
+    continuation with the real continuation of the same prompt
   * the PPO reward terms (rewards.py) for the same real and generated music
   * for the hybrid models: the mean gate value per track and layer (paper Eq. 4: share of the
     within-track Mamba branch) and the learned interaction matrix A per layer (paper Eq. 11)
@@ -106,15 +108,16 @@ def main(argv=None):
         P = args.prompt_bars * STEPS_PER_BAR
         gen = torch.Generator(device="cpu").manual_seed(args.seed)
         chosen = idx[:min(args.num_gen, len(ds))]
-        samples = []
+        conts, refs = [], []
         for i in range(0, len(chosen), args.batch_size):
-            prefix = torch.from_numpy(np.stack([np.asarray(ds.x[j], dtype=np.int64)[:, :P]
-                                                for j in chosen[i:i + args.batch_size]]))
+            windows = [np.asarray(ds.x[j], dtype=np.int64) for j in chosen[i:i + args.batch_size]]
+            prefix = torch.from_numpy(np.stack([w[:, :P] for w in windows]))
             toks = model.generate_batch(model.cfg.max_len - P, prefix, len(prefix), args.temperature,
                                         args.top_k, args.top_p, gen)
-            samples += [t.numpy() for t in toks]
-        res["generated_metrics"] = M.summarize(samples, vocab)
-        res["generated_rewards"] = mean_rewards([s[:, P:] for s in samples], vocab)   # continuation only
+            conts += [t.numpy()[:, P:] for t in toks]           # judge the continuation, not the prompt
+            refs += [w[:, P:] for w in windows]                 # what really followed the same prompt
+        res["generated_metrics"] = {**M.summarize(conts, vocab), **M.compare_to_reference(conts, refs, vocab)}
+        res["generated_rewards"] = mean_rewards(conts, vocab)
         res["generation"] = {"prompt_bars": args.prompt_bars, "temperature": args.temperature,
                              "top_k": args.top_k, "top_p": args.top_p}
 

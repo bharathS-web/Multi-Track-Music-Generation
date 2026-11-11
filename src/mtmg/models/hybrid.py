@@ -2,7 +2,7 @@
 
 Model family (see `factory.build_model`):
 
-  hybrid             this file. per-track Mamba + cross-track attention + sigmoid gate (paper Eq. 3-4)
+  hybrid             this file. per-track Mamba + cross-track attention + sigmoid gate (paper Eq. 3-5)
   hybrid_no_gate     this file. same, but the gate is fixed at 0.5 (ablation: is the learned gate useful?)
   mamba_independent  this file. per-track Mamba only (ablation: tracks never interact)
   mamba_only         flat.py.   ONE Mamba over all tracks flattened into a single stream (baseline)
@@ -74,6 +74,8 @@ class ModelConfig:
     # Paper Eq. 11 (learned instrument interaction matrix). Default False so that checkpoints trained
     # before this option existed still load; configs/base.yaml turns it on.
     interaction_graph: bool = False
+    # Width of the cross-track attention (paper Eq. 25, d_cross). 0 = same as d_model.
+    d_cross: int = 0
 
     def to_dict(self):
         return asdict(self)
@@ -139,13 +141,15 @@ class TrackAttention(nn.Module):
                    with the learned interaction matrix A (row i: how much track i listens to each j).
     """
 
-    def __init__(self, d: int, heads: int, num_tracks: int, dropout: float, graph: bool = False):
+    def __init__(self, d: int, heads: int, num_tracks: int, dropout: float, graph: bool = False,
+                 d_cross: int = 0):
         super().__init__()
-        assert d % heads == 0
-        self.h, self.dh, self.K, self.dropout = heads, d // heads, num_tracks, dropout
+        dc = d_cross or d                                       # paper Eq. 25: reduced width d_cross
+        assert dc % heads == 0
+        self.h, self.dh, self.K, self.dropout = heads, dc // heads, num_tracks, dropout
         self.graph = graph
-        self.qkv = nn.Linear(d, 3 * d)
-        self.proj = nn.Linear(d, d)
+        self.qkv = nn.Linear(d, 3 * dc)
+        self.proj = nn.Linear(dc, d)
         if graph:
             self.graph_logits = nn.Parameter(torch.zeros(num_tracks, num_tracks))
         else:
@@ -203,7 +207,7 @@ class TrackAttention(nn.Module):
         return self._cache[key]
 
     # -------------------------------------------------------------- forward ----
-    def _heads(self, a: torch.Tensor) -> torch.Tensor:          # (B, N, d) -> (B, H, N, dh)
+    def _heads(self, a: torch.Tensor) -> torch.Tensor:          # (B, N, d_cross) -> (B, H, N, dh)
         B, N, _ = a.shape
         return a.view(B, N, self.h, self.dh).transpose(1, 2)
 
@@ -232,7 +236,7 @@ class TrackAttention(nn.Module):
             bias = torch.cat([bias, bias], dim=-1)
             attn_mask = bias.masked_fill(~allowed, float("-inf")).to(q.dtype)
             out = F.scaled_dot_product_attention(q, keys, values, attn_mask=attn_mask, dropout_p=p)
-        out = self.proj(out.transpose(1, 2).reshape(B, T * K, d))
+        out = self.proj(out.transpose(1, 2).reshape(B, T * K, self.h * self.dh))
         return out.view(B, T, K, d).permute(0, 2, 1, 3)
 
     def step_attend(self, q: torch.Tensor, keys: torch.Tensor, values: torch.Tensor,
@@ -263,7 +267,8 @@ class HybridLayer(nn.Module):
         self.mamba = build_mamba(d, cfg.d_state, cfg.d_conv, cfg.expand, cfg.use_official_mamba)
         self.cross = self.mode in CROSS_TRACK_MODES
         if self.cross:
-            self.xattn = TrackAttention(d, cfg.n_heads, cfg.num_tracks, cfg.dropout, cfg.interaction_graph)
+            self.xattn = TrackAttention(d, cfg.n_heads, cfg.num_tracks, cfg.dropout, cfg.interaction_graph,
+                                        cfg.d_cross)
         if self.mode == "hybrid":
             self.gate = nn.Linear(d, 1)                            # paper Eq. 3 (scalar gate per token)
         self.norm2 = nn.LayerNorm(d)
@@ -301,7 +306,7 @@ class _Cache:
     def __init__(self, model: "MultiTrackLM", B: int, T: int, device, dtype):
         cfg = model.cfg
         L, K, H = cfg.n_layers, cfg.num_tracks, cfg.n_heads
-        dh = cfg.d_model // H
+        dh = (cfg.d_cross or cfg.d_model) // H
         self.mamba = [[None] * K for _ in range(L)]
         if model.within_step:
             self.kh = torch.zeros(L, B, H, T * K, dh, device=device, dtype=dtype)   # hidden keys at u*K+k
@@ -413,7 +418,7 @@ class MultiTrackLM(nn.Module):
                 cache.kh[li][:, :, u * K + track] = k[:, :, 0]
                 cache.vh[li][:, :, u * K + track] = v[:, :, 0]
                 if empty and xa.graph:                                 # nothing to listen to yet
-                    a_out = xa.proj(torch.zeros_like(z))
+                    a_out = xa.proj(z.new_zeros(z.size(0), xa.h * xa.dh))
                 elif empty:                                            # joint softmax reads itself
                     self_track = torch.tensor([track], device=h.device)
                     a_out = xa.step_attend(q, k, v, self_track, track)
